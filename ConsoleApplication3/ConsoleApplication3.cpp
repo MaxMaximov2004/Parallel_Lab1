@@ -1,10 +1,11 @@
 ﻿// ConsoleApplication3.cpp : Этот файл содержит функцию "main". Здесь начинается и заканчивается выполнение программы.
 //
+#include <xmmintrin.h>  // SSE intrinsics (для сравнения с ассемблером)
 
 #include <iostream>
 #include <vector>
 #include <string>
-#include <math.h>
+#include <cmath>
 
 // Data
 struct data {
@@ -94,8 +95,73 @@ double Simpson(data intgrl_data) {
 }
 
 //Assembler algorithms
-// РАБОТАЕТ ТОЛЬКО В 32-БИТНОМ РЕЖИМЕ (x86)!
-// Проект → Свойства → Configuration Properties → General → Platform Toolset → x86
+
+bool test_scalar_add(float a, float b, float expected, float epsilon = 1e-5f) {
+    float result = 0.0f;
+
+    __asm {
+        // Загрузить операнды в XMM-регистры
+        movss xmm0, a      // xmm0 = a
+        movss xmm1, b      // xmm1 = b
+
+        // Сложить скалярно (только младший float)
+        addss xmm0, xmm1   // xmm0 = a + b
+
+        // Сохранить результат
+        movss result, xmm0
+    }
+
+    // Сравнение с учётом погрешности (обязательно для float!)
+    return std::fabs(result - expected) < epsilon;
+}
+
+bool test_vector_add(
+    const float a[4],
+    const float b[4],
+    const float expected[4],
+    float epsilon = 1e-5f
+) {
+    float result[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+
+    __asm {
+        // Загрузить адреса массивов в регистры
+        mov esi, a          // esi = указатель на массив a
+        mov edi, b          // edi = указатель на массив b
+
+        // Загрузить векторы (128 бит = 4 float)
+        movups xmm0, [esi]  // xmm0 = [a0, a1, a2, a3]
+        movups xmm1, [edi]  // xmm1 = [b0, b1, b2, b3]
+
+        // Сложить все 4 компонента параллельно (SSE)
+        addps xmm0, xmm1    // xmm0 = xmm0 + xmm1
+
+        // Сохранить ВСЕ 4 результата (не только первый!)
+        movups result, xmm0
+    }
+
+    //__asm {
+    //    // Загрузить векторы
+    //    movups xmm0, a[0]   // xmm0 = [a0, a1, a2, a3]
+    //    movups xmm1, b[0]   // xmm1 = [b0, b1, b2, b3]
+
+    //    // Сложить все 4 компонента параллельно
+    //    addps  xmm0, xmm1    // xmm0 = [a0+b0, a1+b1, a2+b2, a3+b3]
+
+    //    // Сохранить результат
+    //    movups result[0], xmm0
+    //    
+    //}
+
+    // Проверить все 4 компонента
+    bool falg = true;
+    for (int i = 0; i < 4; i++) {
+        std::cout <<"\t"<< result[i]<<" "<<expected[i] << std::endl;
+        if (std::fabs(result[i] - expected[i]) >= epsilon) {
+            falg = false;
+        }
+    }
+    return falg;
+}
 
 double Left_rect_ASM(data intgrl_data) {
     double integral = 0.0;
@@ -149,17 +215,25 @@ double Left_rect_ASM(data intgrl_data) {
 
     return integral;
 }
+
 int main()
 {
     auto Funct{ [](float x)->float {return x * x; } };
     data Data = generate(0, 20, 10000, Funct);
     //std::cout << vis_data(Data)<<std::endl;
-    std::cout << "Classic: " << std::endl;
+    /*std::cout << "Classic: " << std::endl;
     std::cout << Left_rect(Data) << std::endl;
     std::cout << Right_rect(Data) << std::endl;
-    std::cout << Simpson(Data) << std::endl;
+    std::cout << Simpson(Data) << std::endl;*/
     std::cout << "Assembler: " << std::endl;
-    std::cout << Left_rect_ASM(Data) << std::endl;
+    //std::cout << Left_rect_ASM(Data) << std::endl;
+    std::cout << test_scalar_add(2,2,4) << std::endl;
+    float a[4] = { 1.0f, 2.0f, 3.0f, 4.0f };
+    float b[4] = { 0.5f, 0.5f, 0.5f, 0.5f };
+    float expected[4] = { 1.5f, 2.5f, 3.5f, 4.5f };
+
+    std::cout << test_vector_add(a,b,expected) << std::endl;
+
 
 
 }
